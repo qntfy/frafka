@@ -40,7 +40,17 @@ $ go build
 
 ## Running the tests
 
-`go test -v --cover ./...`
+Frafka has integration tests which require a kafka broker to test against. `KAFKA_BROKERS` environment variable is
+used by tests. [simplesteph/kafka-stack-docker-compose](https://github.com/simplesteph/kafka-stack-docker-compose)
+has a great simple docker-compose setup that is used in frafka CI currently.
+
+```
+$ curl --silent -L -o kafka.yml https://raw.githubusercontent.com/simplesteph/kafka-stack-docker-compose/v5.1.0/zk-single-kafka-single.yml
+$ DOCKER_HOST_IP=127.0.0.1 docker-compose -f kafka.yml up -d
+# takes a while to initialize; can use a tool like wait-for-it.sh in scripting
+$ export KAFKA_BROKERS=127.0.0.1:9092
+$ go test -v --cover ./...
+```
 
 ## Configuration
 Frafka Sources and Sinks are configured using [Viper](https://godoc.org/github.com/spf13/viper).

@@ -7,7 +7,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/qntfy/frafka)](https://goreportcard.com/report/github.com/qntfy/frafka)
 [![GoDoc](https://godoc.org/github.com/qntfy/frafka?status.svg)](http://godoc.org/github.com/qntfy/frafka)
 
-Frafka is a Kafka implementation for [Frizzle](github.com/qntfy/frizzle) based on [confluent-go-kafka](https://github.com/confluentinc/confluent-kafka-go).
+Frafka is a Kafka implementation for [Frizzle](https://github.com/qntfy/frizzle) based on [confluent-go-kafka](https://github.com/confluentinc/confluent-kafka-go).
 
 Frizzle is a magic message (`Msg`) bus designed for parallel processing w many goroutines.
   * `Receive()` messages from a configured `Source`

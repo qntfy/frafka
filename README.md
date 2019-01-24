@@ -1,5 +1,12 @@
 # Frafka
 
+[![Travis Build Status](https://img.shields.io/travis/qntfy/frafka.svg?branch=master)](https://travis-ci.org/qntfy/frafka)
+[![Coverage Status](https://coveralls.io/repos/github/qntfy/frafka/badge.svg?branch=master)](https://coveralls.io/github/qntfy/frafka?branch=master)
+[![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![GitHub release](https://img.shields.io/github/release/qntfy/frafka.svg?maxAge=3600)](https://github.com/qntfy/frafka/releases/latest)
+[![Go Report Card](https://goreportcard.com/badge/github.com/qntfy/frafka)](https://goreportcard.com/report/github.com/qntfy/frafka)
+[![GoDoc](https://godoc.org/github.com/qntfy/frafka?status.svg)](http://godoc.org/github.com/qntfy/frafka)
+
 Frafka is a Kafka implementation for [Frizzle](github.com/qntfy/frizzle) based on [confluent-go-kafka](https://github.com/confluentinc/confluent-kafka-go).
 
 Frizzle is a magic message (`Msg`) bus designed for parallel processing w many goroutines.

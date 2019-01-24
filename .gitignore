@@ -5,6 +5,10 @@
 *.so
 *.dylib
 
+# dependency stuff
+/vendor/
+kafka.yml
+
 # Test binary, build with `go test -c`
 *.test
 

@@ -1,0 +1,37 @@
+language: go
+go:
+- 1.x
+services: docker
+
+env:
+  global:
+  - DOCKER_HOST_IP="127.0.0.1"
+  - KAFKA_BROKERS="127.0.0.1:9092"
+
+before_install:
+# Initialize kafka
+- curl --silent -L -o kafka.yml https://raw.githubusercontent.com/simplesteph/kafka-stack-docker-compose/v5.1.0/zk-single-kafka-single.yml
+- docker-compose -f kafka.yml up -d
+# Install librdkafka
+- curl --silent -OL https://raw.githubusercontent.com/confluentinc/confluent-kafka-go/v0.11.4/mk/bootstrap-librdkafka.sh
+- bash bootstrap-librdkafka.sh v0.11.4
+- export PKG_CONFIG_PATH="$PWD/tmp-build/lib/pkgconfig"
+- export LD_LIBRARY_PATH="$PWD/tmp-build/lib"
+- export DYLD_LIBRARY_PATH="$PWD/tmp-build/lib"
+- PATH="$PATH:$GOPATH/bin"
+- sudo ldconfig
+# Download the dependencies
+- export GO111MODULE=on
+- go mod download
+- go mod vendor
+- go mod verify
+- go get github.com/mattn/goveralls
+- go get golang.org/x/tools/cmd/cover
+
+script:
+- curl --silent -OL https://raw.githubusercontent.com/vishnubob/wait-for-it/8ed92e8cab83cfed76ff012ed4a36cef74b28096/wait-for-it.sh
+- chmod a+x wait-for-it.sh && ./wait-for-it.sh $KAFKA_BROKERS
+- "$HOME/gopath/bin/goveralls -service=travis-ci -v"
+
+after_script:
+- docker-compose -f kafka.yml down

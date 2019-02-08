@@ -101,7 +101,12 @@ loop:
 			case *kafka.Message:
 				s.handleMsg(e)
 			case kafka.PartitionEOF:
-				s.evtChan <- frizzle.Event(e)
+				// No action required
+			case kafka.OffsetsCommitted:
+				// only report if there is an error
+				if e.Error != nil {
+					s.evtChan <- frizzle.NewError(e.Error.Error())
+				}
 			case kafka.Error:
 				s.evtChan <- frizzle.Event(e)
 			default:

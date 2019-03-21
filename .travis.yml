@@ -12,9 +12,9 @@ before_install:
 # Initialize kafka
 - curl --silent -L -o kafka.yml https://raw.githubusercontent.com/simplesteph/kafka-stack-docker-compose/v5.1.0/zk-single-kafka-single.yml
 - docker-compose -f kafka.yml up -d
-# Install librdkafka - based on https://github.com/confluentinc/confluent-kafka-go/blob/v0.11.4/.travis.yml
-- curl --silent -OL https://raw.githubusercontent.com/confluentinc/confluent-kafka-go/v0.11.4/mk/bootstrap-librdkafka.sh
-- bash bootstrap-librdkafka.sh v0.11.4
+# Install librdkafka - based on https://github.com/confluentinc/confluent-kafka-go/blob/v0.11.6/.travis.yml
+- curl --silent -OL https://raw.githubusercontent.com/confluentinc/confluent-kafka-go/v0.11.6/mk/bootstrap-librdkafka.sh
+- bash bootstrap-librdkafka.sh v0.11.6
 - export PKG_CONFIG_PATH="$PWD/tmp-build/lib/pkgconfig"
 - export LD_LIBRARY_PATH="$PWD/tmp-build/lib"
 - export DYLD_LIBRARY_PATH="$PWD/tmp-build/lib"

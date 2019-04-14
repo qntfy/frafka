@@ -1,6 +1,7 @@
 package frafka_test
 
 import (
+	"context"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -24,6 +25,7 @@ const (
 type sourceTestSuite struct {
 	suite.Suite
 	prod  *kafka.Producer
+	admin *kafka.AdminClient
 	v     *viper.Viper
 	topic string
 	src   frizzle.Source
@@ -56,10 +58,18 @@ func TestKafkaSink(t *testing.T) {
 func (s *sourceTestSuite) SetupSuite() {
 	rand.Seed(time.Now().UnixNano())
 	brokers := loadKafkaTestENV()
+	cfg := &kafka.ConfigMap{
+		"bootstrap.servers":  brokers,
+		"session.timeout.ms": 6000,
+	}
 	var err error
-	s.prod, err = kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": brokers})
-	if err != nil {
-		s.Error(err)
+	s.prod, err = kafka.NewProducer(cfg)
+	if !s.Nil(err) {
+		s.FailNow("unable to establish connection during test setup")
+	}
+
+	s.admin, err = kafka.NewAdminClient(cfg)
+	if !s.Nil(err) {
 		s.FailNow("unable to establish connection during test setup")
 	}
 
@@ -70,6 +80,7 @@ func (s *sourceTestSuite) SetupSuite() {
 
 func (s *sourceTestSuite) TearDownSuite() {
 	s.prod.Close()
+	s.admin.Close()
 }
 
 func (s *sinkTestSuite) SetupSuite() {
@@ -81,8 +92,7 @@ func (s *sinkTestSuite) SetupSuite() {
 		"group.id":          baseConsumerGroup,
 		"auto.offset.reset": "earliest",
 	})
-	if err != nil {
-		s.Error(err)
+	if !s.Nil(err) {
 		s.FailNow("unable to establish connection during test setup")
 	}
 
@@ -103,10 +113,21 @@ func kafkaTopic(s string) string {
 func (s *sourceTestSuite) SetupTest() {
 	s.topic = kafkaTopic(s.T().Name())
 	s.v.Set("kafka_topics", s.topic)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	results, err := s.admin.CreateTopics(ctx, []kafka.TopicSpecification{
+		kafka.TopicSpecification{
+			Topic:             s.topic,
+			NumPartitions:     1,
+			ReplicationFactor: 1,
+		},
+	})
+	if !s.Nil(err) || !s.Equal(kafka.ErrNoError, results[0].Error.Code()) {
+		s.FailNow("unable to create test topic")
+	}
 
-	var err error
 	s.src, err = frafka.InitSource(s.v)
-	if !s.Nil(err, "unable to initialize source") {
+	if !s.Nil(err) {
 		s.FailNow("unable to initialize source")
 	}
 	go func() {
@@ -123,10 +144,14 @@ func (s *sourceTestSuite) TearDownTest() {
 func (s *sinkTestSuite) SetupTest() {
 	s.topic = kafkaTopic(s.T().Name())
 	err := s.cons.Subscribe(s.topic, nil)
-	s.Nil(err, "consumer unable to subscribe to topic")
+	if !s.Nil(err) {
+		s.FailNow("consumer unable to subscribe to topic")
+	}
 
 	s.sink, err = frafka.InitSink(s.v)
-	s.Nil(err, "unable to initialize sink")
+	if !s.Nil(err) {
+		s.FailNow("unable to initialize sink")
+	}
 
 	go func() {
 		for ev := range s.sink.(frizzle.Eventer).Events() {

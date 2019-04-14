@@ -106,9 +106,8 @@ func (s *sourceTestSuite) SetupTest() {
 
 	var err error
 	s.src, err = frafka.InitSource(s.v)
-	if err != nil {
-		s.Error(err)
-		s.Fail("unable to initialize source")
+	if !s.Nil(err, "unable to initialize source") {
+		s.FailNow("unable to initialize source")
 	}
 	go func() {
 		for ev := range s.src.(frizzle.Eventer).Events() {
@@ -124,16 +123,11 @@ func (s *sourceTestSuite) TearDownTest() {
 func (s *sinkTestSuite) SetupTest() {
 	s.topic = kafkaTopic(s.T().Name())
 	err := s.cons.Subscribe(s.topic, nil)
-	if err != nil {
-		s.Error(err)
-		s.Fail("consumer unable to subscribe to topic")
-	}
+	s.Nil(err, "consumer unable to subscribe to topic")
 
 	s.sink, err = frafka.InitSink(s.v)
-	if err != nil {
-		s.Error(err)
-		s.Fail("unable to initialize sink")
-	}
+	s.Nil(err, "unable to initialize sink")
+
 	go func() {
 		for ev := range s.sink.(frizzle.Eventer).Events() {
 			s.T().Logf("async message: %s", ev)

@@ -238,6 +238,21 @@ func (s *sourceTestSuite) TestUnAckedAndFlush() {
 
 }
 
+func (s *sourceTestSuite) TestPing() {
+	kSrc := s.src.(*frafka.Source)
+	err := kSrc.Ping()
+	s.Nil(err, "expect successful Ping() for connected Source")
+
+	// ensure it fails on invalid broker
+	v := viper.New()
+	v.Set("kafka_brokers", "abc.def.ghij:9092")
+	v.Set("kafka_topics", s.topic)
+	v.Set("kafka_consumer_group", frizConsumerGroup)
+
+	_, err = frafka.InitSource(s.v)
+	s.Error(err, "expected error from invalid broker")
+}
+
 func (s *sourceTestSuite) TestStopAndClose() {
 	expectedValues := []string{"an unacked msg"}
 	s.T().Log(s.topic)

@@ -1,11 +1,12 @@
 package frafka
 
 import (
-	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/pkg/errors"
 	"github.com/qntfy/frizzle"
 	"github.com/qntfy/frizzle/common"
 	"github.com/spf13/viper"
@@ -25,6 +26,7 @@ var (
 // Source encapsulates a kafka consumer for receiving and tracking Msgs
 type Source struct {
 	cons     *kafka.Consumer
+	topics   []string
 	msgChan  chan frizzle.Msg
 	unAcked  *common.UnAcked
 	quitChan chan struct{}
@@ -64,18 +66,23 @@ func InitSource(config *viper.Viper) (*Source, error) {
 		return nil, err
 	}
 
-	err = c.SubscribeTopics(config.GetStringSlice("kafka_topics"), nil)
-	if err != nil {
-		return nil, err
-	}
-
 	s := &Source{
 		cons:     c,
+		topics:   config.GetStringSlice("kafka_topics"),
 		msgChan:  make(chan frizzle.Msg),
 		unAcked:  common.NewUnAcked(),
 		quitChan: make(chan struct{}),
 		doneChan: make(chan struct{}),
 		evtChan:  make(chan frizzle.Event),
+	}
+
+	if err = s.Ping(); err != nil {
+		return nil, errors.WithMessage(err, "unable to retrieve kafka metadata")
+	}
+
+	err = c.SubscribeTopics(s.topics, nil)
+	if err != nil {
+		return nil, err
 	}
 	go s.consume()
 
@@ -152,6 +159,21 @@ func (s *Source) UnAcked() []frizzle.Msg {
 // be called before Close() will return.
 func (s *Source) Stop() error {
 	close(s.quitChan)
+	return nil
+}
+
+// Ping brokers to ensure Source can connect to configured topics
+func (s *Source) Ping() error {
+	for _, topic := range s.topics {
+		meta, err := s.cons.GetMetadata(&topic, false, kafkaSessionTimeoutMS)
+		if err != nil {
+			return err
+		} else if kafkaErr := meta.Topics[topic].Error; kafkaErr.Code() != kafka.ErrNoError {
+			return errors.WithMessagef(kafkaErr, "topic %s has error", topic)
+		} else if len(meta.Topics[topic].Partitions) < 1 {
+			return errors.New(fmt.Sprintf("configured topic %s has no partitions", topic))
+		}
+	}
 	return nil
 }
 

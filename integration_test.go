@@ -2,6 +2,7 @@ package frafka_test
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/pkg/errors"
 	"github.com/qntfy/frafka"
 	"github.com/qntfy/frizzle"
 	"github.com/qntfy/frizzle/mocks"
@@ -110,6 +112,18 @@ func kafkaTopic(s string) string {
 	return strings.Join([]string{r, "topic", suffix}, ".")
 }
 
+func (s *sourceTestSuite) pingTopic(topic string) error {
+	meta, err := s.admin.GetMetadata(&topic, false, 1000)
+	if err != nil {
+		return err
+	} else if kafkaErr := meta.Topics[topic].Error; kafkaErr.Code() != kafka.ErrNoError {
+		return errors.WithMessagef(kafkaErr, "topic %s has error", topic)
+	} else if len(meta.Topics[topic].Partitions) < 1 {
+		return errors.New(fmt.Sprintf("configured topic %s has no partitions", topic))
+	}
+	return nil
+}
+
 func (s *sourceTestSuite) SetupTest() {
 	s.topic = kafkaTopic(s.T().Name())
 	s.v.Set("kafka_topics", s.topic)
@@ -124,6 +138,18 @@ func (s *sourceTestSuite) SetupTest() {
 	})
 	if !s.Nil(err) || !s.Equal(kafka.ErrNoError, results[0].Error.Code()) {
 		s.FailNow("unable to create test topic")
+	}
+
+	// wait for topic to fully initialize
+	var errTopic error
+	for i := 0; i < 20; i++ {
+		if errTopic = s.pingTopic(s.topic); errTopic == nil {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if errTopic != nil {
+		s.FailNow("topic did not initialize in 4+ seconds", errTopic.Error())
 	}
 
 	s.src, err = frafka.InitSource(s.v)
@@ -268,7 +294,7 @@ func (s *sourceTestSuite) TestPing() {
 	v.Set("kafka_topics", s.topic)
 	v.Set("kafka_consumer_group", frizConsumerGroup)
 
-	_, err = frafka.InitSource(s.v)
+	_, err = frafka.InitSource(v)
 	s.Error(err, "expected error from invalid broker")
 }
 

@@ -1,6 +1,8 @@
 package frafka_test
 
 import (
+	"context"
+	"fmt"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -8,6 +10,7 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/pkg/errors"
 	"github.com/qntfy/frafka"
 	"github.com/qntfy/frizzle"
 	"github.com/qntfy/frizzle/mocks"
@@ -24,6 +27,7 @@ const (
 type sourceTestSuite struct {
 	suite.Suite
 	prod  *kafka.Producer
+	admin *kafka.AdminClient
 	v     *viper.Viper
 	topic string
 	src   frizzle.Source
@@ -56,10 +60,18 @@ func TestKafkaSink(t *testing.T) {
 func (s *sourceTestSuite) SetupSuite() {
 	rand.Seed(time.Now().UnixNano())
 	brokers := loadKafkaTestENV()
+	cfg := &kafka.ConfigMap{
+		"bootstrap.servers":  brokers,
+		"session.timeout.ms": 6000,
+	}
 	var err error
-	s.prod, err = kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": brokers})
-	if err != nil {
-		s.Error(err)
+	s.prod, err = kafka.NewProducer(cfg)
+	if !s.Nil(err) {
+		s.FailNow("unable to establish connection during test setup")
+	}
+
+	s.admin, err = kafka.NewAdminClient(cfg)
+	if !s.Nil(err) {
 		s.FailNow("unable to establish connection during test setup")
 	}
 
@@ -70,6 +82,7 @@ func (s *sourceTestSuite) SetupSuite() {
 
 func (s *sourceTestSuite) TearDownSuite() {
 	s.prod.Close()
+	s.admin.Close()
 }
 
 func (s *sinkTestSuite) SetupSuite() {
@@ -81,8 +94,7 @@ func (s *sinkTestSuite) SetupSuite() {
 		"group.id":          baseConsumerGroup,
 		"auto.offset.reset": "earliest",
 	})
-	if err != nil {
-		s.Error(err)
+	if !s.Nil(err) {
 		s.FailNow("unable to establish connection during test setup")
 	}
 
@@ -100,15 +112,49 @@ func kafkaTopic(s string) string {
 	return strings.Join([]string{r, "topic", suffix}, ".")
 }
 
+func (s *sourceTestSuite) pingTopic(topic string) error {
+	meta, err := s.admin.GetMetadata(&topic, false, 1000)
+	if err != nil {
+		return err
+	} else if kafkaErr := meta.Topics[topic].Error; kafkaErr.Code() != kafka.ErrNoError {
+		return errors.WithMessagef(kafkaErr, "topic %s has error", topic)
+	} else if len(meta.Topics[topic].Partitions) < 1 {
+		return errors.New(fmt.Sprintf("configured topic %s has no partitions", topic))
+	}
+	return nil
+}
+
 func (s *sourceTestSuite) SetupTest() {
 	s.topic = kafkaTopic(s.T().Name())
 	s.v.Set("kafka_topics", s.topic)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	results, err := s.admin.CreateTopics(ctx, []kafka.TopicSpecification{
+		kafka.TopicSpecification{
+			Topic:             s.topic,
+			NumPartitions:     1,
+			ReplicationFactor: 1,
+		},
+	})
+	if !s.Nil(err) || !s.Equal(kafka.ErrNoError, results[0].Error.Code()) {
+		s.FailNow("unable to create test topic")
+	}
 
-	var err error
+	// wait for topic to fully initialize
+	var errTopic error
+	for i := 0; i < 20; i++ {
+		if errTopic = s.pingTopic(s.topic); errTopic == nil {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if errTopic != nil {
+		s.FailNow("topic did not initialize in 4+ seconds", errTopic.Error())
+	}
+
 	s.src, err = frafka.InitSource(s.v)
-	if err != nil {
-		s.Error(err)
-		s.Fail("unable to initialize source")
+	if !s.Nil(err) {
+		s.FailNow("unable to initialize source")
 	}
 	go func() {
 		for ev := range s.src.(frizzle.Eventer).Events() {
@@ -124,16 +170,15 @@ func (s *sourceTestSuite) TearDownTest() {
 func (s *sinkTestSuite) SetupTest() {
 	s.topic = kafkaTopic(s.T().Name())
 	err := s.cons.Subscribe(s.topic, nil)
-	if err != nil {
-		s.Error(err)
-		s.Fail("consumer unable to subscribe to topic")
+	if !s.Nil(err) {
+		s.FailNow("consumer unable to subscribe to topic")
 	}
 
 	s.sink, err = frafka.InitSink(s.v)
-	if err != nil {
-		s.Error(err)
-		s.Fail("unable to initialize sink")
+	if !s.Nil(err) {
+		s.FailNow("unable to initialize sink")
 	}
+
 	go func() {
 		for ev := range s.sink.(frizzle.Eventer).Events() {
 			s.T().Logf("async message: %s", ev)
@@ -236,6 +281,21 @@ func (s *sourceTestSuite) TestUnAckedAndFlush() {
 	s.Equal(0, len(s.src.UnAcked()))
 	s.Equal(frizzle.ErrAlreadyAcked, f.Fail(lastMsg))
 
+}
+
+func (s *sourceTestSuite) TestPing() {
+	kSrc := s.src.(*frafka.Source)
+	err := kSrc.Ping()
+	s.Nil(err, "expect successful Ping() for connected Source")
+
+	// ensure it fails on invalid broker
+	v := viper.New()
+	v.Set("kafka_brokers", "abc.def.ghij:9092")
+	v.Set("kafka_topics", s.topic)
+	v.Set("kafka_consumer_group", frizConsumerGroup)
+
+	_, err = frafka.InitSource(v)
+	s.Error(err, "expected error from invalid broker")
 }
 
 func (s *sourceTestSuite) TestStopAndClose() {

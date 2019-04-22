@@ -17,7 +17,7 @@ var (
 
 var (
 	// how long to wait for messages to flush
-	flushTimeoutMS = 30 * 1000
+	flushTimeoutMS = 10 * 1000
 )
 
 // Sink encapsulates a kafka producer for Sending Msgs
@@ -104,15 +104,18 @@ func (s *Sink) Send(m frizzle.Msg, topic string) error {
 // Close the Sink after flushing any Msgs not fully sent
 func (s *Sink) Close() error {
 	// Flush any messages still pending send
+	fmt.Println("flush producer")
 	if remaining := s.prod.Flush(flushTimeoutMS); remaining > 0 {
 		return fmt.Errorf("there are still %d messages which have not been delivered after %d milliseconds", remaining, flushTimeoutMS)
 	}
 	// tell deliveryReports() goroutine to finish
+	fmt.Println("close deliveryReports() loop")
 	s.quitChan <- 1
 	// wait for it to finish
 	<-s.doneChan
 	// stop event chan
 	close(s.evtChan)
+	fmt.Println("close producer")
 	s.prod.Close()
 	return nil
 }

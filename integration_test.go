@@ -219,6 +219,13 @@ func (s *sinkTestSuite) TestSend() {
 	s.Equal(expectedMessages, receivedMessages)
 }
 
+func (s *sinkTestSuite) TestCloseTwice() {
+	err := s.sink.Close()
+	s.Nil(err)
+	err = s.sink.Close()
+	s.Nil(err)
+}
+
 func (s *sourceTestSuite) produce(values []string) {
 	for _, m := range values {
 		s.prod.Produce(&kafka.Message{

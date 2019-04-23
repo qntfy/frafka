@@ -182,7 +182,6 @@ func (s *Source) Ping() error {
 // unAcked Msgs.
 func (s *Source) Close() error {
 	// confirm that consume() goroutine finished
-	fmt.Println("begin source close")
 	select {
 	case <-s.doneChan:
 	case <-time.After(stopCloseTimeout):
@@ -191,9 +190,7 @@ func (s *Source) Close() error {
 	if s.unAcked.Count() > 0 {
 		return frizzle.ErrUnackedMsgsRemain
 	}
-	fmt.Println("close channels")
 	close(s.msgChan)
 	close(s.evtChan)
-	fmt.Println("close consumer")
 	return s.cons.Close()
 }

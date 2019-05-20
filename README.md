@@ -23,7 +23,7 @@ As of Go 1.11, frafka uses [go mod](https://github.com/golang/go/wiki/Modules) f
 
 ### Install librdkafka
 
-Frafka depends on C library `librdkafka` (>=`v0.11.4`). For Debian 9+ (which includes golang docker images),
+Frafka depends on C library `librdkafka` (>=`v0.11.6`). For Debian 9+ (which includes golang docker images),
 it has to be built from source. Fortunately, there's a script for that.
 
 ```sh

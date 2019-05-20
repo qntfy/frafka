@@ -46,22 +46,23 @@ func InitSource(config *viper.Viper) (*Source, error) {
 	}
 	brokers := strings.Join(config.GetStringSlice("kafka_brokers"), ",")
 
-	// TODO: Performance optimization in librdkafka
-	// https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md
-	// Key values:
-	// - queued.min.messages
-	// - fetch.message.max.bytes and related
-	c, err := kafka.NewConsumer(&kafka.ConfigMap{
+	config.SetDefault("kafka_max_buffer_kb", 16384) // 16MB
+	maxBufferKB := config.GetInt("kafka_max_buffer_kb")
+
+	kCfg := kafka.ConfigMap{
 		"bootstrap.servers":               brokers, // expects CSV
 		"group.id":                        config.GetString("kafka_consumer_group"),
 		"session.timeout.ms":              kafkaSessionTimeoutMS,
 		"go.events.channel.enable":        true, // support c.Events()
 		"go.events.channel.size":          kafkaEventChannelSize,
-		"go.application.rebalance.enable": true, // we handle partition updates (needed for offset management)
+		"go.application.rebalance.enable": true,        // we handle partition updates (needed for offset management)
+		"queued.max.messages.kbytes":      maxBufferKB, // limit memory usage for the consumer prefetch buffer; note there is one buffer per topic+partition
 		"default.topic.config": kafka.ConfigMap{
 			"auto.offset.reset": startOffset,
 		},
-	})
+	}
+
+	c, err := kafka.NewConsumer(&kCfg)
 	if err != nil {
 		return nil, err
 	}

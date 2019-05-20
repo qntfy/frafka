@@ -35,13 +35,15 @@ func InitSink(config *viper.Viper) (*Sink, error) {
 	}
 	brokers := strings.Join(config.GetStringSlice("kafka_brokers"), ",")
 
-	// TODO: Performance optimization in librdkafka
-	// https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md
-	// Key values:
-	// - queue.buffering.max.messages
-	// - queue.buffering.max.ms
-	// - compression.codec ?
-	p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": brokers})
+	config.SetDefault("kafka_max_buffer_kb", 16384) // 16MB
+	maxBufferKB := config.GetInt("kafka_max_buffer_kb")
+
+	kCfg := kafka.ConfigMap{
+		"bootstrap.servers":          brokers,
+		"queued.max.messages.kbytes": maxBufferKB, // limit memory usage for the consumer prefetch buffer; note there is one buffer per topic+partition
+	}
+
+	p, err := kafka.NewProducer(&kCfg)
 	if err != nil {
 		return nil, err
 	}

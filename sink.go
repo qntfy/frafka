@@ -105,14 +105,14 @@ func (s *Sink) Send(m frizzle.Msg, topic string) error {
 
 // Close the Sink after flushing any Msgs not fully sent
 func (s *Sink) Close() error {
-	// Flush any messages still pending send
-	if remaining := s.prod.Flush(flushTimeoutMS); remaining > 0 {
-		return fmt.Errorf("there are still %d messages which have not been delivered after %d milliseconds", remaining, flushTimeoutMS)
-	}
-
 	// check if already closed, return if so
 	if s.quitChan == nil {
 		return nil
+	}
+
+	// Flush any messages still pending send
+	if remaining := s.prod.Flush(flushTimeoutMS); remaining > 0 {
+		return fmt.Errorf("there are still %d messages which have not been delivered after %d milliseconds", remaining, flushTimeoutMS)
 	}
 
 	// tell deliveryReports() goroutine to finish if running

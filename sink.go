@@ -28,22 +28,14 @@ type Sink struct {
 	evtChan  chan frizzle.Event
 }
 
-// InitSink initializes a basic Sink
-func InitSink(config *viper.Viper) (*Sink, error) {
-	if !config.IsSet("kafka_brokers") {
-		return nil, errors.New("brokers must be set for kafka Sink")
-	}
-	brokers := strings.Join(config.GetStringSlice("kafka_brokers"), ",")
-
-	config.SetDefault("kafka_max_buffer_kb", 16384) // 16MB
-	maxBufferKB := config.GetInt("kafka_max_buffer_kb")
-
-	kCfg := kafka.ConfigMap{
-		"bootstrap.servers":          brokers,
-		"queued.max.messages.kbytes": maxBufferKB, // limit memory usage for the consumer prefetch buffer; note there is one buffer per topic+partition
+// NewSink sets up a frafka sink.
+func NewSink(brokerString string, bufferSize int) (*Sink, error) {
+	cfg := kafka.ConfigMap{
+		"bootstrap.servers":          brokerString,
+		"queued.max.messages.kbytes": bufferSize, // limit memory usage for the consumer prefetch buffer; note there is one buffer per topic+partition
 	}
 
-	p, err := kafka.NewProducer(&kCfg)
+	p, err := kafka.NewProducer(&cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -58,6 +50,19 @@ func InitSink(config *viper.Viper) (*Sink, error) {
 	go s.deliveryReports()
 
 	return s, nil
+}
+
+// InitSink initializes a basic Sink via *viper.Config.
+func InitSink(config *viper.Viper) (*Sink, error) {
+	if !config.IsSet("kafka_brokers") {
+		return nil, errors.New("brokers must be set for kafka Sink")
+	}
+	brokers := strings.Join(config.GetStringSlice("kafka_brokers"), ",")
+
+	config.SetDefault("kafka_max_buffer_kb", 16384) // 16MB
+	maxBufferKB := config.GetInt("kafka_max_buffer_kb")
+
+	return NewSink(brokers, maxBufferKB)
 }
 
 // deliveryReports receives async events from kafka Producer about whether

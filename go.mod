@@ -8,3 +8,5 @@ require (
 	github.com/spf13/viper v1.2.1
 	github.com/stretchr/testify v1.2.2
 )
+
+go 1.13

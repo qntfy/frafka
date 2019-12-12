@@ -41,6 +41,17 @@ cd frafka
 go build
 ```
 
+## Basic API usage
+
+### Sink
+
+Create a new sink with `NewSink`:
+
+``` golang
+// error omitted - handle in proper code
+sink, _ := frafka.NewSink("broker1:15151,broker2:15151", 16 * 1024)
+```
+
 ## Running the tests
 
 Frafka has integration tests which require a kafka broker to test against. `KAFKA_BROKERS` environment variable is

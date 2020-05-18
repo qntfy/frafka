@@ -57,9 +57,7 @@ func InitSource(config *viper.Viper) (*Source, error) {
 		"go.events.channel.size":          kafkaEventChannelSize,
 		"go.application.rebalance.enable": true,        // we handle partition updates (needed for offset management)
 		"queued.max.messages.kbytes":      maxBufferKB, // limit memory usage for the consumer prefetch buffer; note there is one buffer per topic+partition
-		"default.topic.config": kafka.ConfigMap{
-			"auto.offset.reset": startOffset,
-		},
+		"auto.offset.reset":               startOffset,
 	}
 
 	c, err := kafka.NewConsumer(&kCfg)

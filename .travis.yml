@@ -1,6 +1,6 @@
 language: go
 go:
-- 1.x
+- '1.14'
 services: docker
 
 env:
@@ -14,10 +14,7 @@ before_install:
 - docker-compose -f kafka.yml up -d
 - PATH="$PATH:$GOPATH/bin"
 # Download the dependencies
-- export GO111MODULE=on
-- go mod download
-- go mod vendor
-- go mod verify
+- go mod download && go mod verify
 - go get github.com/mattn/goveralls
 - go get golang.org/x/tools/cmd/cover
 

@@ -124,13 +124,29 @@ func (s *sourceTestSuite) pingTopic(topic string) error {
 	return nil
 }
 
+func (s *sourceTestSuite) logEvents(evtr frizzle.Eventer) {
+	go func() {
+		for ev := range evtr.Events() {
+			s.T().Logf("async message: %s", ev)
+		}
+	}()
+}
+
+func (s *sinkTestSuite) logEvents(evtr frizzle.Eventer) {
+	go func() {
+		for ev := range evtr.Events() {
+			s.T().Logf("async message: %s", ev)
+		}
+	}()
+}
+
 func (s *sourceTestSuite) SetupTest() {
 	s.topic = kafkaTopic(s.T().Name())
 	s.v.Set("kafka_topics", s.topic)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	results, err := s.admin.CreateTopics(ctx, []kafka.TopicSpecification{
-		kafka.TopicSpecification{
+		{
 			Topic:             s.topic,
 			NumPartitions:     1,
 			ReplicationFactor: 1,
@@ -156,11 +172,8 @@ func (s *sourceTestSuite) SetupTest() {
 	if !s.Nil(err) {
 		s.FailNow("unable to initialize source")
 	}
-	go func() {
-		for ev := range s.src.(frizzle.Eventer).Events() {
-			s.T().Logf("async message: %s", ev)
-		}
-	}()
+	s.logEvents(s.src.(frizzle.Eventer))
+
 }
 
 func (s *sourceTestSuite) TearDownTest() {
@@ -178,12 +191,7 @@ func (s *sinkTestSuite) SetupTest() {
 	if !s.Nil(err) {
 		s.FailNow("unable to initialize sink")
 	}
-
-	go func() {
-		for ev := range s.sink.(frizzle.Eventer).Events() {
-			s.T().Logf("async message: %s", ev)
-		}
-	}()
+	s.logEvents(s.sink.(frizzle.Eventer))
 }
 
 func (s *sinkTestSuite) TearDownTest() {
@@ -191,11 +199,8 @@ func (s *sinkTestSuite) TearDownTest() {
 	s.sink = nil
 }
 
-func (s *sinkTestSuite) TestSend() {
-	expectedMessages := []string{"Hello", "out", "there", "kafka", "world!"}
+func (s *sinkTestSuite) sendAndCompare(expectedMessages []string) {
 	receivedMessages := []string{}
-	s.T().Log(s.topic)
-
 	for _, m := range expectedMessages {
 		msg := frizzle.NewSimpleMsg("foo", []byte(m), time.Now())
 		s.sink.Send(msg, s.topic)
@@ -219,6 +224,74 @@ func (s *sinkTestSuite) TestSend() {
 	s.Equal(expectedMessages, receivedMessages)
 }
 
+func (s *sinkTestSuite) TestSend() {
+	expectedMessages := []string{"Hello", "out", "there", "kafka", "world!"}
+	s.T().Log(s.topic)
+	s.sendAndCompare(expectedMessages)
+}
+
+func (s *sinkTestSuite) TestSendNewSink() {
+	expectedMessages := []string{"Hello", "out", "there", "kafka", "world!"}
+	s.T().Log(s.topic)
+
+	var err error
+	s.sink.Close()
+	s.sink, err = frafka.NewSink(s.v.GetString("kafka_brokers"), 8192)
+	if !s.Nil(err) {
+		s.FailNow("unable to initialize sink")
+	}
+	s.logEvents(s.sink.(frizzle.Eventer))
+
+	s.sendAndCompare(expectedMessages)
+}
+
+func (s *sinkTestSuite) TestSendWithCompression() {
+	expectedMessages := []string{"I", "come", "to", "you", "with", "some", "compressed", "messages"}
+	s.T().Log(s.topic)
+
+	// Initialize a new sink with compression
+	compressionCfg := viper.New()
+	compressionCfg.Set("kafka_brokers", s.v.GetString("kafka_brokers"))
+	compressionCfg.Set("kafka_compression", "snappy")
+	var err error
+	s.sink.Close()
+	s.sink, err = frafka.InitSink(compressionCfg)
+	if !s.Nil(err) {
+		s.FailNow("unable to initialize sink")
+	}
+	s.logEvents(s.sink.(frizzle.Eventer))
+
+	s.sendAndCompare(expectedMessages)
+}
+
+func (s *sinkTestSuite) TestSendWithMiscConfig() {
+	expectedMessages := []string{"Test out", "some miscellaneous", "config settings"}
+	s.T().Log(s.topic)
+
+	// Initialize a new sink with compression
+	miscCfg := viper.New()
+	miscCfg.Set("kafka_brokers", s.v.GetString("kafka_brokers"))
+	miscCfg.Set("kafka_config", "retries=10 max.in.flight=1000 delivery.report.only.error=true")
+	var err error
+	s.sink.Close()
+	s.sink, err = frafka.InitSink(miscCfg)
+	if !s.Nil(err) {
+		s.FailNow("unable to initialize sink")
+	}
+	s.logEvents(s.sink.(frizzle.Eventer))
+
+	s.sendAndCompare(expectedMessages)
+}
+
+func (s *sinkTestSuite) TestSinkInvalidConfig() {
+	invCfg := viper.New()
+	invCfg.Set("kafka_brokers", s.v.GetString("kafka_brokers"))
+	invCfg.Set("kafka_config", "invalid.config=true")
+	sink, err := frafka.InitSink(invCfg)
+	s.Nil(sink)
+	s.Error(err)
+}
+
 func (s *sinkTestSuite) TestCloseTwice() {
 	err := s.sink.Close()
 	s.Nil(err)
@@ -235,12 +308,9 @@ func (s *sourceTestSuite) produce(values []string) {
 	}
 }
 
-func (s *sourceTestSuite) TestReceive() {
-	expectedValues := []string{"now", "we", "receive", "some", "new", "messages"}
-	receivedValues := []string{}
-	s.T().Log(s.topic)
-
+func (s *sourceTestSuite) receiveAndCompare(expectedValues []string) {
 	s.produce(expectedValues)
+	receivedValues := []string{}
 	receivedMessages := []frizzle.Msg{}
 	for len(receivedMessages) < len(expectedValues) {
 		select {
@@ -260,6 +330,45 @@ func (s *sourceTestSuite) TestReceive() {
 	// Confirm all have been Acked and received and expected values match
 	s.Equal(0, len(s.src.UnAcked()))
 	s.Equal(expectedValues, receivedValues)
+}
+
+func (s *sourceTestSuite) TestReceive() {
+	expectedValues := []string{"now", "we", "receive", "some", "new", "messages"}
+	s.T().Log(s.topic)
+	s.receiveAndCompare(expectedValues)
+}
+
+func (s *sourceTestSuite) TestReceiveWithMiscConfig() {
+	expectedValues := []string{"another", "set", "of", "new", "messages"}
+	s.T().Log(s.topic)
+
+	// set up a source with misc config
+	s.src.Stop()
+	s.src.Close()
+	miscCfg := viper.New()
+	miscCfg.Set("kafka_brokers", s.v.GetString("kafka_brokers"))
+	miscCfg.Set("kafka_consumer_group", frizConsumerGroup)
+	miscCfg.Set("kafka_topics", s.topic)
+	miscCfg.Set("kafka_config", "heartbeat.interval.ms=2000")
+	var err error
+	s.src, err = frafka.InitSource(miscCfg)
+	if !s.Nil(err) {
+		s.FailNow("unable to initialize source")
+	}
+	s.logEvents(s.src.(frizzle.Eventer))
+
+	s.receiveAndCompare(expectedValues)
+}
+
+func (s *sourceTestSuite) TestSourceInvalidConfig() {
+	invCfg := viper.New()
+	invCfg.Set("kafka_brokers", s.v.GetString("kafka_brokers"))
+	invCfg.Set("kafka_consumer_group", frizConsumerGroup)
+	invCfg.Set("kafka_topics", s.topic)
+	invCfg.Set("kafka_config", "invalid.config=true")
+	src, err := frafka.InitSource(invCfg)
+	s.Nil(src)
+	s.Error(err)
 }
 
 func (s *sourceTestSuite) TestUnAckedAndFlush() {

@@ -17,23 +17,18 @@ Frizzle is a magic message (`Msg`) bus designed for parallel processing w many g
 
 ## Prereqs / Build instructions
 
-### Go mod
-
-As of Go 1.11, frafka uses [go mod](https://github.com/golang/go/wiki/Modules) for dependency management.
-
 ### Install librdkafka
 
-Frafka depends on C library `librdkafka` (>=`v0.11.6`). For Debian 9+ (which includes golang docker images),
-it has to be built from source. Fortunately, there's a script for that.
+The underlying kafka library,
+[confluent-kafka-go](https://github.com/confluentinc/confluent-kafka-go#installing-librdkafka)
+has some particularly important nuances:
 
-```sh
-  # Install librdkafka
-  - curl --silent -OL https://raw.githubusercontent.com/confluentinc/confluent-kafka-go/v0.11.4/mk/bootstrap-librdkafka.sh
-  - bash bootstrap-librdkafka.sh v0.11.4 /usr/local
-  - ldconfig
-```
+* alpine builds (e.g. `FROM golang-1.14-alpine` should run all go commands with `-tags musl`
+  * e.g. `go test -tags musl ./...`
+* all builds producing an executable should run with `CGO_ENABLED=1`
+  * not necessary for libraries, however.
 
-Once that is installed, should be good to go with
+Otherwise, should be good to go with
 
 ```sh
 go get github.com/qntfy/frafka
@@ -86,13 +81,20 @@ use a prefix before the below values.
 | KAFKA_TOPICS | source | topic(s) to read from |  |
 | KAFKA_CONSUMER_GROUP | source | consumer group value for coordinating multiple clients |  |
 | KAFKA_CONSUME_LATEST_FIRST | source (optional) | start at the beginning or end of topic | earliest |
-| KAFKA_MAX_BUFFER_KB | optional | How large a buffer to allow for prefetching and batch produing kafka message* | 16384 |
+| KAFKA_COMPRESSION | sink (optional) | set a compression format, equivalent to `compression.type` |  |
+| KAFKA_MAX_BUFFER_KB | optional | How large a buffer to allow for prefetching and batch produing kafka message | 16384 |
+| KAFKA_CONFIG | optional | Add librdkafka client config, format `key1=value1 key2=value2 ...` |  |
 
-*`KAFKA_MAX_BUFFER_KB` is passed through to librdkafka. Default is 16MB.
+### Configuration Notes
+
+* `KAFKA_MAX_BUFFER_KB` is passed through to librdkafka. Default is 16MB.
 Corresponding librdkafka config values are `queue.buffering.max.kbytes` (Producer) and `queued.max.messages.kbytes`
 (Consumer). Note that librdkafka creates one buffer each for the Producer (Sink) and for each topic+partition
 being consumed by the source. E.g. with default 16MB default, if you are consuming from 4 partitions and also
 producing then the theoretical max memory usage from the buffer would be `16*(4+1) = 80` MB.
+* `KAFKA_CONFIG` allows setting arbitrary
+[librdkafka configuration](https://github.com/edenhill/librdkafka/blob/v1.4.2/CONFIGURATION.md)
+such as `retries=10 max.in.flight=1000 delivery.report.only.error=true`
 
 ## Async Error Handling
 

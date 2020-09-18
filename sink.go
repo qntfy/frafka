@@ -28,13 +28,17 @@ type Sink struct {
 	evtChan  chan frizzle.Event
 }
 
-// NewSink sets up a frafka sink.
+// NewSink sets up a basic frafka sink.
 func NewSink(brokerString string, bufferSize int) (*Sink, error) {
 	cfg := kafka.ConfigMap{
 		"bootstrap.servers":          brokerString,
 		"queued.max.messages.kbytes": bufferSize, // limit memory usage for the consumer prefetch buffer; note there is one buffer per topic+partition
 	}
+	return newSinkFromConfig(cfg)
+}
 
+// newSinkFromConfig sets up a frafka sink using a kafka.ConfigMap
+func newSinkFromConfig(cfg kafka.ConfigMap) (*Sink, error) {
 	p, err := kafka.NewProducer(&cfg)
 	if err != nil {
 		return nil, err
@@ -62,7 +66,24 @@ func InitSink(config *viper.Viper) (*Sink, error) {
 	config.SetDefault("kafka_max_buffer_kb", 16384) // 16MB
 	maxBufferKB := config.GetInt("kafka_max_buffer_kb")
 
-	return NewSink(brokers, maxBufferKB)
+	compression := config.GetString("kafka_compression")
+
+	additionalConfig := config.GetStringSlice("kafka_config")
+
+	kCfg := kafka.ConfigMap{
+		"bootstrap.servers":          brokers,
+		"queued.max.messages.kbytes": maxBufferKB,
+	}
+
+	if compression != "" {
+		kCfg.SetKey("compression.type", compression)
+	}
+
+	for _, c := range additionalConfig {
+		kCfg.Set(c)
+	}
+
+	return newSinkFromConfig(kCfg)
 }
 
 // deliveryReports receives async events from kafka Producer about whether

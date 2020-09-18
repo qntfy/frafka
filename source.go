@@ -49,6 +49,8 @@ func InitSource(config *viper.Viper) (*Source, error) {
 	config.SetDefault("kafka_max_buffer_kb", 16384) // 16MB
 	maxBufferKB := config.GetInt("kafka_max_buffer_kb")
 
+	additionalConfig := config.GetStringSlice("kafka_config")
+
 	kCfg := kafka.ConfigMap{
 		"bootstrap.servers":               brokers, // expects CSV
 		"group.id":                        config.GetString("kafka_consumer_group"),
@@ -58,6 +60,10 @@ func InitSource(config *viper.Viper) (*Source, error) {
 		"go.application.rebalance.enable": true,        // we handle partition updates (needed for offset management)
 		"queued.max.messages.kbytes":      maxBufferKB, // limit memory usage for the consumer prefetch buffer; note there is one buffer per topic+partition
 		"auto.offset.reset":               startOffset,
+	}
+
+	for _, c := range additionalConfig {
+		kCfg.Set(c)
 	}
 
 	c, err := kafka.NewConsumer(&kCfg)

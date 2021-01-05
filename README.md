@@ -80,21 +80,33 @@ use a prefix before the below values.
 | KAFKA_BROKERS | required | address(es) of kafka brokers, space separated |  |
 | KAFKA_TOPICS | source | topic(s) to read from |  |
 | KAFKA_CONSUMER_GROUP | source | consumer group value for coordinating multiple clients |  |
-| KAFKA_CONSUME_LATEST_FIRST | source (optional) | start at the beginning or end of topic | earliest |
-| KAFKA_COMPRESSION | sink (optional) | set a compression format, equivalent to `compression.type` |  |
-| KAFKA_MAX_BUFFER_KB | optional | How large a buffer to allow for prefetching and batch produing kafka message | 16384 |
 | KAFKA_CONFIG | optional | Add librdkafka client config, format `key1=value1 key2=value2 ...` |  |
+| KAFKA_CONFIG_FILE | optional | relative or absolute file path to a config file for librdkafka client config (see notes) |  |
 
-### Configuration Notes
+### Kafka Client Configuration Notes
 
-* `KAFKA_MAX_BUFFER_KB` is passed through to librdkafka. Default is 16MB.
-Corresponding librdkafka config values are `queue.buffering.max.kbytes` (Producer) and `queued.max.messages.kbytes`
-(Consumer). Note that librdkafka creates one buffer each for the Producer (Sink) and for each topic+partition
-being consumed by the source. E.g. with default 16MB default, if you are consuming from 4 partitions and also
-producing then the theoretical max memory usage from the buffer would be `16*(4+1) = 80` MB.
 * `KAFKA_CONFIG` allows setting arbitrary
 [librdkafka configuration](https://github.com/edenhill/librdkafka/blob/v1.4.2/CONFIGURATION.md)
 such as `retries=10 max.in.flight=1000 delivery.report.only.error=true`
+* `KAFKA_CONFIG_FILE` allows another method for arbitrary config similar to KAFKA_CONFIG. `KAFKA_CONFIG` takes priority
+over `KAFKA_CONFIG_FILE`. The specified file is parsed with [viper](https://github.com/spf13/viper) which supports a range of
+config file formats, for simplicity we recommend using yaml similar to the provided example file (used in tests).
+* Required config set via environment variables listed above (e.g. `KAFKA_BROKERS`) will always take priority over
+optional values - if `bootstrap.servers` is set in `KAFKA_CONFIG` to a different value, it will be ignored.
+* Sensible defaults are set for several additional config values, see variables in `source.go` and `sink.go` for specifics
+* An earlier version of frafka also supported setting specific optional kafka configs via environment variables, such as
+compression. This functionality has been removed to simplify config logic and reduce confusion if values are set in multiple
+places.
+
+#### Suggested Kafka Config
+
+Some values that we commonly set, particularly in a memory constrained environment (e.g. running a producer/consumer service against a 9 partition topic with average message size less than 10KB and less than 200MB memory available).
+
+* queued.max.messages.kbytes: 2048 (up to 16384)
+* auto.offset.reset: (latest|earliest)
+* receive.message.max.bytes: 2000000
+* fetch.max.bytes: 1000000
+* compression.type: snappy (and possibly linger.ms value depending on throughput/latency requirements) are great to set to reduce network traffic and disk usage on brokers
 
 ## Async Error Handling
 

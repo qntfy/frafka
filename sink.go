@@ -18,6 +18,10 @@ var (
 var (
 	// how long to wait for messages to flush
 	flushTimeoutMS = 10 * 1000
+
+	defaultSinkKafkaCfg = &kafka.ConfigMap{
+		"queued.max.messages.kbytes": 16384,
+	}
 )
 
 // Sink encapsulates a kafka producer for Sending Msgs
@@ -56,34 +60,31 @@ func newSinkFromConfig(cfg kafka.ConfigMap) (*Sink, error) {
 	return s, nil
 }
 
-// InitSink initializes a basic Sink via *viper.Config.
-func InitSink(config *viper.Viper) (*Sink, error) {
+// initSinkKafkaConfig does the heavy lifting for building out a kafka config for Sink Producer
+// across possible configuration sources. It is extracted from InitSink for ease of unit testing.
+func initSinkKafkaConfig(config *viper.Viper) (*kafka.ConfigMap, error) {
 	if !config.IsSet("kafka_brokers") {
 		return nil, errors.New("brokers must be set for kafka Sink")
 	}
+
+	kCfg, err := initBaseKafkaConfig(config, defaultSinkKafkaCfg)
+	if err != nil {
+		return nil, err
+	}
+
 	brokers := strings.Join(config.GetStringSlice("kafka_brokers"), ",")
+	kCfg.SetKey("bootstrap.servers", brokers)
 
-	config.SetDefault("kafka_max_buffer_kb", 16384) // 16MB
-	maxBufferKB := config.GetInt("kafka_max_buffer_kb")
+	return kCfg, nil
+}
 
-	compression := config.GetString("kafka_compression")
-
-	additionalConfig := config.GetStringSlice("kafka_config")
-
-	kCfg := kafka.ConfigMap{
-		"bootstrap.servers":          brokers,
-		"queued.max.messages.kbytes": maxBufferKB,
+// InitSink initializes a basic Sink via *viper.Config.
+func InitSink(config *viper.Viper) (*Sink, error) {
+	kCfg, err := initSinkKafkaConfig(config)
+	if err != nil {
+		return nil, err
 	}
-
-	if compression != "" {
-		kCfg.SetKey("compression.type", compression)
-	}
-
-	for _, c := range additionalConfig {
-		kCfg.Set(c)
-	}
-
-	return newSinkFromConfig(kCfg)
+	return newSinkFromConfig(*kCfg)
 }
 
 // deliveryReports receives async events from kafka Producer about whether
